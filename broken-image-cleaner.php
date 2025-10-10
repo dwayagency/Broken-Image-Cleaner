@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eliminare immagini rotte
  * Description: Verifica e rimuove automaticamente le immagini rotte (404) dai tuoi post WordPress
- * Version:     2.1.0
+ * Version:     2.2.0
  * Author:      DWAY Agency
  * Text Domain: broken-image-cleaner
  */
@@ -67,8 +67,13 @@ class DWAY_Broken_Image_Cleaner {
         // Calcola totale post disponibili
         $total_posts = $this->count_posts($post_type, $category);
 
+        // Gestisce lo svuotamento delle modifiche accumulate
+        if (isset($_POST['clear_changes']) && check_admin_referer(self::NONCE)) {
+            delete_transient('bic_pending_changes');
+            $pending_changes = false;
+        }
         // Gestisce l'applicazione diretta delle modifiche
-        if (isset($_POST['apply_changes']) && check_admin_referer(self::NONCE)) {
+        elseif (isset($_POST['apply_changes']) && check_admin_referer(self::NONCE)) {
             $did_run = true;
             $results = $this->apply_stored_changes();
             
@@ -85,6 +90,8 @@ class DWAY_Broken_Image_Cleaner {
             // Salva i risultati se è dry-run e ci sono immagini rotte
             if ($dry_run && !empty($results['log'])) {
                 $this->store_changes($results['log']);
+                // Ricarica pending_changes dopo l'aggiunta
+                $pending_changes = get_transient('bic_pending_changes');
             } elseif (!$dry_run) {
                 // Pulisce i dati salvati se non è dry-run
                 delete_transient('bic_pending_changes');
@@ -180,8 +187,25 @@ class DWAY_Broken_Image_Cleaner {
                         <?php endif; ?>
 
                         <?php if ($pending_changes && !$did_run): ?>
+                            <?php 
+                            $total_pending_broken = 0;
+                            foreach ($pending_changes as $change) {
+                                $total_pending_broken += count($change['broken_urls']);
+                            }
+                            ?>
                             <div class="notice notice-warning inline">
-                                <p><strong>⚠️ Modifiche in attesa!</strong> Hai una scansione precedente con immagini rotte trovate. Scorri in basso per applicare le modifiche o fai una nuova scansione.</p>
+                                <p>
+                                    <strong>⚠️ Modifiche accumulate!</strong> 
+                                    Hai <strong><?php echo count($pending_changes); ?> post</strong> con <strong><?php echo $total_pending_broken; ?> immagini rotte</strong> pronte per essere eliminate. 
+                                    <br><small>Le scansioni in modalità anteprima si accumulano. Scorri in basso per eliminare tutto o svuota la coda.</small>
+                                </p>
+                                <form method="post" style="display: inline-block; margin-top: 10px;">
+                                    <?php wp_nonce_field(self::NONCE); ?>
+                                    <button type="submit" name="clear_changes" class="button" onclick="return confirm('Vuoi svuotare tutte le modifiche accumulate? Dovrai fare una nuova scansione.');">
+                                        <span class="dashicons dashicons-dismiss" style="margin-top: 4px;"></span>
+                                        Svuota Modifiche Accumulate
+                                    </button>
+                                </form>
                             </div>
                         <?php endif; ?>
                         
@@ -233,6 +257,20 @@ class DWAY_Broken_Image_Cleaner {
                 <div class="bic-card">
                     <h2>📊 Risultati Batch Corrente</h2>
                     
+                    <?php if ($dry_run && $pending_changes): ?>
+                        <div class="notice notice-info inline" style="margin-bottom: 15px;">
+                            <p style="margin: 5px 0;">
+                                <strong>ℹ️ Modalità accumulo attiva:</strong> 
+                                I risultati di questa scansione si aggiungono a quelli precedenti. 
+                                Totale accumulato: <strong><?php 
+                                $tot = 0; 
+                                foreach ($pending_changes as $c) $tot += count($c['broken_urls']); 
+                                echo intval($tot); 
+                                ?> immagini</strong> in <strong><?php echo count($pending_changes); ?> post</strong>.
+                            </p>
+                        </div>
+                    <?php endif; ?>
+                    
                     <div class="bic-stats">
                         <div class="bic-stat">
                             <div class="bic-stat-label">Post Analizzati</div>
@@ -260,7 +298,12 @@ class DWAY_Broken_Image_Cleaner {
                     
                     <?php if ($applied_changes): ?>
                         <div class="notice notice-success inline" style="background: #d4edda; border-color: #28a745;">
-                            <p><strong>✅ Eliminazione Completata!</strong> Tutte le immagini rotte sono state rimosse dai post.</p>
+                            <p>
+                                <strong>✅ Eliminazione Completata!</strong> 
+                                Tutte le <strong><?php echo intval($results['broken_found']); ?> immagini rotte accumulate</strong> 
+                                sono state rimosse da <strong><?php echo intval($results['posts_updated']); ?> post</strong>.
+                                <br><small>La coda di modifiche accumulate è stata svuotata.</small>
+                            </p>
                         </div>
                     <?php elseif ($dry_run): ?>
                         <div class="notice notice-warning inline">
@@ -294,21 +337,33 @@ class DWAY_Broken_Image_Cleaner {
                 <?php endif; ?>
 
                 <!-- Pulsante Applica Modifiche (solo se dry-run e non già applicato) -->
-                <?php if ($dry_run && $pending_changes && !empty($results['log']) && !$applied_changes): ?>
+                <?php if ($dry_run && $pending_changes && !$applied_changes): ?>
+                    <?php 
+                    $total_accumulated_broken = 0;
+                    $total_accumulated_posts = count($pending_changes);
+                    foreach ($pending_changes as $change) {
+                        $total_accumulated_broken += count($change['broken_urls']);
+                    }
+                    ?>
                 <div class="bic-card" style="text-align: center; background: #d63638; border-color: #b32d2e; color: #fff;">
-                    <h2 style="color: #fff; margin-top: 0;">🗑️ Pronto per Eliminare</h2>
+                    <h2 style="color: #fff; margin-top: 0;">🗑️ Pronto per Eliminare TUTTO</h2>
                     <p style="font-size: 16px; margin: 15px 0;">
-                        Hai <strong><?php echo intval($results['broken_found']); ?> immagini rotte</strong> in <strong><?php echo count($results['log']); ?> post</strong>.
+                        <strong>Totale accumulato:</strong> <strong><?php echo intval($total_accumulated_broken); ?> immagini rotte</strong> in <strong><?php echo intval($total_accumulated_posts); ?> post</strong>.
                     </p>
-                    <form method="post" onsubmit="return confirm('Sei sicuro di voler eliminare tutte le immagini rotte trovate? Questa azione non può essere annullata.');">
+                    <?php if (!empty($results['log'])): ?>
+                        <p style="font-size: 14px; margin: 10px 0; opacity: 0.9;">
+                            Questa scansione ha trovato <strong><?php echo intval($results['broken_found']); ?> nuove immagini rotte</strong> in <strong><?php echo count($results['log']); ?> post</strong>.
+                        </p>
+                    <?php endif; ?>
+                    <form method="post" onsubmit="return confirm('Sei sicuro di voler eliminare TUTTE le <?php echo intval($total_accumulated_broken); ?> immagini rotte accumulate da tutte le scansioni? Questa azione non può essere annullata.');">
                         <?php wp_nonce_field(self::NONCE); ?>
                         <button type="submit" name="apply_changes" class="button button-hero" style="background: #fff; color: #d63638; border-color: #fff; margin: 10px 0;">
                             <span class="dashicons dashicons-trash" style="margin-top: 8px;"></span>
-                            Elimina Tutte le Immagini Rotte Ora
+                            Elimina TUTTE le <?php echo intval($total_accumulated_broken); ?> Immagini Rotte
                         </button>
                     </form>
                     <p style="font-size: 13px; margin: 10px 0 0 0; opacity: 0.9;">
-                        ⚠️ I post verranno aggiornati automaticamente senza nuova scansione
+                        ⚠️ Verranno eliminati i risultati di TUTTE le scansioni accumulate
                     </p>
                 </div>
                 <?php endif; ?>
@@ -368,20 +423,23 @@ class DWAY_Broken_Image_Cleaner {
                 ?>
                 
                 <div class="bic-card" style="text-align: center; background: #d63638; border-color: #b32d2e; color: #fff;">
-                    <h2 style="color: #fff; margin-top: 0;">🗑️ Modifiche in Attesa di Applicazione</h2>
-                    <p style="font-size: 16px; margin: 15px 0;">
-                        Hai <strong><?php echo intval($total_broken); ?> immagini rotte</strong> in <strong><?php echo count($pending_changes); ?> post</strong> pronte per essere eliminate.
+                    <h2 style="color: #fff; margin-top: 0;">🗑️ Modifiche Accumulate - Pronte per l'Eliminazione</h2>
+                    <p style="font-size: 18px; margin: 15px 0; font-weight: bold;">
+                        TOTALE: <strong><?php echo intval($total_broken); ?> immagini rotte</strong> in <strong><?php echo count($pending_changes); ?> post</strong>
                     </p>
-                    <form method="post" onsubmit="return confirm('Sei sicuro di voler eliminare tutte le immagini rotte trovate? Questa azione non può essere annullata.');">
+                    <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 5px; margin: 15px 0;">
+                        <p style="margin: 0; font-size: 14px;">
+                            💡 Tutte le scansioni in modalità anteprima sono state accumulate.<br>
+                            Puoi continuare a scansionare per aggiungere altri post, oppure eliminare tutto ora.
+                        </p>
+                    </div>
+                    <form method="post" onsubmit="return confirm('Sei sicuro di voler eliminare TUTTE le <?php echo intval($total_broken); ?> immagini rotte accumulate? Questa azione non può essere annullata.');">
                         <?php wp_nonce_field(self::NONCE); ?>
-                        <button type="submit" name="apply_changes" class="button button-hero" style="background: #fff; color: #d63638; border-color: #fff; margin: 10px 0;">
+                        <button type="submit" name="apply_changes" class="button button-hero" style="background: #fff; color: #d63638; border-color: #fff; margin: 10px 0; font-size: 16px; padding: 8px 24px;">
                             <span class="dashicons dashicons-trash" style="margin-top: 8px;"></span>
-                            Elimina Tutte le Immagini Rotte Ora
+                            Elimina TUTTE le <?php echo intval($total_broken); ?> Immagini Rotte
                         </button>
                     </form>
-                    <p style="font-size: 13px; margin: 10px 0 0 0; opacity: 0.9;">
-                        ⚠️ Queste sono le immagini trovate nella scansione precedente
-                    </p>
                 </div>
 
                 <div class="bic-card">
@@ -590,14 +648,34 @@ class DWAY_Broken_Image_Cleaner {
     }
 
     private function store_changes($log) {
-        $changes = [];
+        // Recupera le modifiche già esistenti
+        $existing_changes = get_transient('bic_pending_changes');
+        if (!is_array($existing_changes)) {
+            $existing_changes = [];
+        }
+
+        // Array per tracciare i post già presenti
+        $existing_post_ids = [];
+        foreach ($existing_changes as $change) {
+            $existing_post_ids[] = $change['post_id'];
+        }
+
+        // Aggiungi solo i nuovi post (evita duplicati)
+        $new_changes = $existing_changes;
+        
         foreach ($log as $item) {
             $post_id = $item['post_id'];
+            
+            // Salta se il post è già stato processato
+            if (in_array($post_id, $existing_post_ids)) {
+                continue;
+            }
+            
             $content = get_post_field('post_content', $post_id, 'raw');
             $processed = $this->process_content($content);
             
             if ($processed['modified']) {
-                $changes[] = [
+                $new_changes[] = [
                     'post_id' => $post_id,
                     'post_title' => $item['post_title'],
                     'new_content' => $processed['new_content'],
@@ -606,7 +684,7 @@ class DWAY_Broken_Image_Cleaner {
             }
         }
         
-        set_transient('bic_pending_changes', $changes, HOUR_IN_SECONDS);
+        set_transient('bic_pending_changes', $new_changes, DAY_IN_SECONDS);
     }
 
     private function apply_stored_changes() {

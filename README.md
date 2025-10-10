@@ -2,7 +2,7 @@
 
 **WordPress plugin to automatically find and remove broken images (404) from your posts.**
 
-![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
 ![WordPress](https://img.shields.io/badge/wordpress-5.0%2B-green.svg)
 ![PHP](https://img.shields.io/badge/php-7.4%2B-purple.svg)
 ![License](https://img.shields.io/badge/license-GPL--2.0-red.svg)
@@ -142,12 +142,33 @@ For each post with broken images:
 2. Click "Start Scan"
 3. Changes are applied automatically
 
-#### Method B: Two-Phase Deletion (Recommended)
+#### Method B: Two-Phase Deletion with Accumulation (Recommended)
 1. **First scan**: Keep "Preview Mode" active
-2. **Analyze results**: Check what will be removed
-3. **Delete all**: Click the red button **"🗑️ Delete All Broken Images Now"**
-4. **Confirm**: Accept the confirmation popup
-5. **Done**: Changes are applied instantly without rescanning
+2. **Continue scanning**: Click "Continue Scan" for progressive batches
+3. **Results accumulate**: Each scan adds to the total (no overwriting)
+4. **Review total**: See accumulated count across all scans
+5. **Delete all**: Click the red button **"🗑️ Delete ALL X Broken Images"**
+6. **Confirm**: Accept the confirmation popup
+7. **Done**: All accumulated changes are applied instantly without rescanning
+
+#### Important: Accumulation System
+
+The plugin **accumulates** results from multiple scans:
+- Each preview scan **adds** to previous results (doesn't overwrite)
+- You can scan different categories or post types in sequence
+- The total is preserved for 24 hours
+- Click **"Clear Accumulated Changes"** to reset and start fresh
+- Applying changes or disabling dry-run clears the accumulation
+
+**Example workflow:**
+```
+Scan 1: 50 posts → Found 10 broken images
+Scan 2: 50 posts → Found 5 broken images
+Scan 3: 50 posts → Found 8 broken images
+
+Total accumulated: 23 broken images
+Click "Delete ALL 23 Broken Images" → All removed at once
+```
 
 ---
 
@@ -374,6 +395,23 @@ Yes, you can:
 - Content Type: `product`
 - Will work on product descriptions
 
+### 9. How does the accumulation system work?
+
+**Results stack up across scans:**
+- Each dry-run scan **adds** broken images to the total
+- You can scan multiple batches or categories
+- Click "Delete ALL" to remove everything accumulated
+- Click "Clear Accumulated Changes" to start fresh
+- Accumulation lasts 24 hours
+
+### 10. What happens if I scan the same posts twice?
+
+**No duplicates:**
+- The plugin tracks post IDs
+- Each post is added only once
+- Re-scanning the same post won't duplicate it
+- You can safely continue scanning
+
 ---
 
 ## 🐛 Troubleshooting
@@ -409,6 +447,14 @@ Yes, you can:
 ---
 
 ## 🔄 Changelog
+
+### Version 2.2.0 (2025-10-10)
+- ✨ **NEW**: Accumulation system - multiple scans now accumulate results instead of overwriting
+- ✨ **NEW**: "Clear Accumulated Changes" button to reset the queue
+- ✨ **NEW**: Extended storage duration to 24 hours (from 1 hour)
+- 🎨 **IMPROVEMENT**: Clear UI showing total accumulated broken images across all scans
+- 🎨 **IMPROVEMENT**: Better notifications explaining accumulation mode
+- 🎨 **IMPROVEMENT**: Delete button now shows total count from ALL scans
 
 ### Version 2.1.0 (2025-10-10)
 - 🎨 Updated plugin name to "Eliminare immagini rotte"
@@ -486,7 +532,7 @@ GNU General Public License for more details.
 ## 👥 Credits
 
 **Developed by:** DWAY Agency  
-**Version:** 2.1.0  
+**Version:** 2.2.0  
 **Last update:** October 2025
 
 ---
